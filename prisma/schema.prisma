@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS ---
+
+enum Role {
+  ADMIN
+  QA
+  ENGINEER
+  MANAGER
+}
+
+enum ComponentType {
+  SOFTWARE
+  FIRMWARE
+  HARDWARE
+  DRONE_UNIT
+  SYSTEM
+}
+
+enum TestType {
+  FUNCTIONAL
+  REGRESSION
+  FLIGHT
+  COMPLIANCE
+  MAINTENANCE
+  EXPERIMENTAL
+}
+
+enum TestStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  PASSED
+  FAILED
+  BLOCKED
+  CONCLUDED
+  WAIVED
+}
+
+enum RunEnvironment {
+  LAB
+  FIELD
+  SIMULATION
+  BENCH
+}
+
+enum IssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  WONT_FIX
+  DEFERRED
+}
+
+enum ArchiveCategory {
+  RELEASE_CERTIFICATION
+  REGRESSION_SUITE
+  COMPLIANCE_AUDIT
+  FIELD_INVESTIGATION
+  MAINTENANCE_CYCLE
+  EXPERIMENTAL
+}
+
+enum ArchiveOutcome {
+  PASSED
+  FAILED
+  CONDITIONAL_PASS
+  INCONCLUSIVE
+}
+
+// --- MODELS ---
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(ENGINEER)
+  avatarInitials String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  testCasesOwned  TestCase[] @relation("TestCaseOwner")
+  testRunsLogged  TestRun[]  @relation("TestRunLogger")
+  issuesAssigned  Issue[]    @relation("IssueAssignee")
+  issuesCreated   Issue[]    @relation("IssueCreator")
+  archivesCreated Archive[]
+  concludedCases  TestCase[] @relation("TestCaseConcluder")
+}
+
+model Component {
+  id           String        @id @default(cuid())
+  name         String
+  type         ComponentType
+  version      String?
+  serialNumber String?
+  description  String?
+  status       String        @default("ACTIVE")
+  metadata     Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  testCases TestCase[]
+  testRuns  TestRun[]
+  issues    Issue[]
+}
+
+model TestPlan {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  milestone   String?
+  status      TestStatus @default(DRAFT)
+  startDate   DateTime?
+  targetDate  DateTime?
+  concludedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  testCases TestCase[]
+  githubRef GitHubRef?
+  archive   Archive?
+}
+
+model TestCase {
+  id             String     @id @default(cuid())
+  title          String
+  objective      String
+  testType       TestType
+  status         TestStatus @default(DRAFT)
+  parameters     Json
+  passCriteria   String
+  steps          Json
+  frequency      String?
+  nextDueDate    DateTime?
+  forkDepth      Int        @default(0)
+  forkReason     String?
+  isCanonical    Boolean    @default(false)
+  concludedAt    DateTime?
+  concludedNotes String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  parentId String?
+  parent   TestCase?  @relation("Forks", fields: [parentId], references: [id])
+  forks    TestCase[] @relation("Forks")
+
+  ownerId String
+  owner   User   @relation("TestCaseOwner", fields: [ownerId], references: [id])
+
+  concludedById String?
+  concludedBy   User?   @relation("TestCaseConcluder", fields: [concludedById], references: [id])
+
+  componentId String?
+  component   Component? @relation(fields: [componentId], references: [id])
+
+  testPlanId String?
+  testPlan   TestPlan? @relation(fields: [testPlanId], references: [id])
+
+  githubRef      GitHubRef?
+  testRuns       TestRun[]
+  archiveEntries ArchiveTestCase[]
+}
+
+model TestRun {
+  id             String         @id @default(cuid())
+  runDate        DateTime       @default(now())
+  environment    RunEnvironment
+  status         TestStatus
+  notes          String?
+  measuredValues Json?
+  attachments    String[]
+  flightData     Json?
+  weatherData    Json?
+  location       String?
+  createdAt      DateTime       @default(now())
+
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id])
+
+  componentId String?
+  component   Component? @relation(fields: [componentId], references: [id])
+
+  loggedById String
+  loggedBy   User   @relation("TestRunLogger", fields: [loggedById], references: [id])
+
+  issues Issue[]
+}
+
+model Issue {
+  id              String        @id @default(cuid())
+  title           String
+  description     String
+  severity        IssueSeverity
+  status          IssueStatus   @default(OPEN)
+  resolutionNotes String?
+  deferredTo      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  resolvedAt      DateTime?
+
+  testRunId String?
+  testRun   TestRun? @relation(fields: [testRunId], references: [id])
+
+  componentId String?
+  component   Component? @relation(fields: [componentId], references: [id])
+
+  assigneeId String?
+  assignee   User?  @relation("IssueAssignee", fields: [assigneeId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("IssueCreator", fields: [createdById], references: [id])
+}
+
+model GitHubRef {
+  id         String   @id @default(cuid())
+  repoUrl    String
+  commitSha  String?
+  prNumber   Int?
+  releaseTag String?
+  branchName String?
+  createdAt  DateTime @default(now())
+
+  testCaseId String?   @unique
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id])
+
+  testPlanId String?   @unique
+  testPlan   TestPlan? @relation(fields: [testPlanId], references: [id])
+}
+
+model Archive {
+  id          String          @id @default(cuid())
+  title       String
+  category    ArchiveCategory
+  outcome     ArchiveOutcome
+  summary     String
+  findings    Json
+  githubRef   String?
+  releaseTag  String?
+  attachments String[]
+  tags        String[]
+  searchIndex String
+  isImmutable Boolean         @default(true)
+  archivedAt  DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+
+  testPlanId String?  @unique
+  testPlan   TestPlan? @relation(fields: [testPlanId], references: [id])
+
+  archivedById String
+  archivedBy   User   @relation(fields: [archivedById], references: [id])
+
+  testCases ArchiveTestCase[]
+}
+
+model ArchiveTestCase {
+  id           String  @id @default(cuid())
+  archiveId    String
+  archive      Archive  @relation(fields: [archiveId], references: [id])
+  testCaseId   String
+  testCase     TestCase @relation(fields: [testCaseId], references: [id])
+  wasCanonical Boolean  @default(false)
+
+  @@unique([archiveId, testCaseId])
+}

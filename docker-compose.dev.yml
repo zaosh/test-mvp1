@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: dronetest-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-dronetest}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dronetest_local}
+      POSTGRES_DB: dronetest
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dronetest-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@dronetest.internal}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+    ports:
+      - "127.0.0.1:5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

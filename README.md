@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DRONETEST — Internal Testing Database
 
-## Getting Started
+Production-grade internal testing database for drone engineering teams. Manages test plans, test cases (with forking), test runs, issues, and compliance archives with full role-based access control.
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 18+
+- Docker & Docker Compose
+
+## Setup
 
 ```bash
+# 1. Copy environment file
+cp .env.local.example .env.local
+
+# 2. Start PostgreSQL and pgAdmin
+docker compose up -d
+
+# 3. Install dependencies
+npm install
+
+# 4. Run database migrations
+npx prisma migrate dev --name init
+
+# 5. Seed the database
+npx prisma db seed
+
+# 6. Start the development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Login Credentials
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Email                        | Password  | Role     |
+|------------------------------|-----------|----------|
+| admin@dronetest.internal     | admin123  | ADMIN    |
+| qa@dronetest.internal        | qa123     | QA       |
+| eng1@dronetest.internal      | eng123    | ENGINEER |
+| eng2@dronetest.internal      | eng123    | ENGINEER |
+| manager@dronetest.internal   | mgr123   | MANAGER  |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## URLs
 
-## Learn More
+| Service   | URL                          |
+|-----------|------------------------------|
+| App       | http://localhost:3000         |
+| pgAdmin   | http://localhost:5050         |
 
-To learn more about Next.js, take a look at the following resources:
+pgAdmin login: `admin@dronetest.internal` / `admin123`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Role Permissions
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Action                          | ADMIN | QA | ENGINEER | MANAGER |
+|---------------------------------|:-----:|:--:|:--------:|:-------:|
+| Master Dashboard                |  Yes  | Yes|    No    |   Yes   |
+| View all pages                  |  Yes  | Yes|   Yes    |   Yes   |
+| Create/edit test cases & plans  |  Yes  | Yes|    No    | Read-only|
+| Create test runs                |  Yes  | Yes|   Yes    |    No   |
+| Create/update issues            |  Yes  | Yes| Own only |    No   |
+| Conclude tests                  |  Yes  | Yes|    No    |    No   |
+| Create archives                 |  Yes  | Yes|    No    |    No   |
 
-## Deploy on Vercel
+## How to Fork a Test
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Navigate to a test case detail page
+2. Click "Fork this test"
+3. Enter a fork reason and optionally override parameters
+4. The fork inherits all parent fields with `forkDepth + 1`
+5. View the full fork tree at `/test-cases/[id]/forks`
+6. Compare two forks side-by-side by selecting them in the tree
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## How to Conclude and Archive
+
+1. Run all test cases in a test plan
+2. On each test case detail page, click "Conclude this test"
+   - Mark one fork as "canonical" if applicable
+   - All sibling forks lose canonical status when one is marked
+3. When all test cases in a plan are concluded, the plan status updates automatically
+4. Navigate to the test plan and click "Conclude Plan" to create an archive
+5. Archives are immutable and include all findings, test results, and fork history
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router, TypeScript)
+- **Database**: PostgreSQL 15 via Docker
+- **ORM**: Prisma 5.22.0
+- **Styling**: TailwindCSS
+- **Auth**: NextAuth.js v4 (credentials, JWT, role-based)
+- **Charts**: Recharts
+- **Validation**: Zod
+- **Forms**: React Hook Form
+
+## Phase 2 Roadmap
+
+- **GitHub Webhooks**: POST `/api/webhooks/github` — receives GitHub events, auto-creates test plans from templates
+- **GitHub Status API**: Push test results back to GitHub on archive creation
+- **PDF Export**: Generate downloadable PDF reports from archives
+- **Email Notifications**: Notify assignees on issue creation, test plan conclusion, and overdue tests
