@@ -2,12 +2,12 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15
-    container_name: dronetest-db
+    container_name: testlab-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: dronetest
+      POSTGRES_DB: testlab
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

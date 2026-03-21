@@ -6,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { StatusPill, TypePill } from "@/components/shared/StatusPill";
 import { GitHubRefBadge } from "@/components/shared/GitHubRefBadge";
 import { ForkTree } from "@/components/shared/ForkTree";
+import { ConfirmModal } from "@/components/shared/ConfirmModal";
 
 interface ForkNode {
   id: string;
@@ -79,8 +80,13 @@ export default function TestCaseDetailPage() {
   const [isCanonical, setIsCanonical] = useState(false);
   const [concluding, setConcluding] = useState(false);
 
+  // Delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const role = (session?.user as any)?.role as string | undefined;
   const canConclude = role === "QA" || role === "ADMIN";
+  const canDelete = role === "QA" || role === "ADMIN";
 
   useEffect(() => {
     setLoading(true);
@@ -190,6 +196,23 @@ export default function TestCaseDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/test-cases/${caseId}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/test-cases");
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "Failed to delete test case.");
+      }
+    } catch {
+      alert("Failed to delete test case.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const addParamRow = () => setForkParams([...forkParams, { key: "", value: "" }]);
   const removeParamRow = (idx: number) => setForkParams(forkParams.filter((_, i) => i !== idx));
   const updateParamRow = (idx: number, field: "key" | "value", val: string) => {
@@ -277,6 +300,14 @@ export default function TestCaseDetailPage() {
               className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             >
               Conclude this test
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="border border-[#ef4444]/30 text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              Delete
             </button>
           )}
         </div>
@@ -482,6 +513,18 @@ export default function TestCaseDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        open={showDeleteModal}
+        title="Delete Test Case"
+        description="This test case will be soft-deleted and hidden from all lists. This action can be reversed by an administrator."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+        loading={deleting}
+      />
 
       {/* Conclude Modal */}
       {showConcludeModal && (

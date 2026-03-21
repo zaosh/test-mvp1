@@ -52,7 +52,7 @@ const TYPE_CONFIG: Record<string, { color: string; label: string }> = {
   SOFTWARE: { color: "#a78bfa", label: "Software" },
   FIRMWARE: { color: "#a78bfa", label: "Firmware" },
   HARDWARE: { color: "#94a3b8", label: "Hardware" },
-  DRONE_UNIT: { color: "#38bdf8", label: "Drone Unit" },
+  DRONE_UNIT: { color: "#38bdf8", label: "Test Unit" },
   SYSTEM: { color: "#6b7280", label: "System" },
 };
 

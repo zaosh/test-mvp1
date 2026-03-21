@@ -1,58 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { z } from "zod";
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { requireRole, isNextResponse } from '@/lib/roles'
+import { writeAuditLog } from '@/lib/audit'
+import { z } from 'zod'
+import { MeasuredValuesSchema } from '@/lib/sanitize'
 
-const updateTestRunSchema = z.object({
-  environment: z.string().optional(),
-  status: z.string().optional(),
-  notes: z.string().optional().nullable(),
-  measuredValues: z.any().optional(),
-  attachments: z.any().optional(),
-  flightData: z.any().optional(),
-  weatherData: z.any().optional(),
-  location: z.string().optional().nullable(),
-});
+const UpdateTestRunSchema = z.object({
+  environment: z.enum(['LAB', 'FIELD', 'SIMULATION', 'BENCH']).optional(),
+  status: z.enum(['PASSED', 'FAILED', 'IN_PROGRESS', 'BLOCKED']).optional(),
+  notes: z.string().max(5000).optional().nullable(),
+  measuredValues: MeasuredValuesSchema.optional(),
+  flightData: z.record(z.string(), z.unknown()).optional(),
+  weatherData: z.record(z.string(), z.unknown()).optional(),
+  location: z.string().max(500).optional().nullable(),
+})
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'ENGINEER', 'MANAGER'])
+  if (isNextResponse(auth)) return auth
 
+  try {
     const testRun = await prisma.testRun.findUnique({
       where: { id: params.id },
       include: {
         testCase: true,
         component: true,
         loggedBy: { select: { id: true, name: true, email: true } },
+        attachments: true,
         issues: {
           include: {
             assignee: { select: { id: true, name: true, email: true } },
           },
         },
       },
-    });
+    })
 
     if (!testRun) {
-      return NextResponse.json(
-        { error: "Test run not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Test run not found', code: 'NOT_FOUND' }, { status: 404 })
     }
 
-    return NextResponse.json(testRun);
-  } catch (error) {
-    console.error("Error fetching test run:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json(testRun)
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }
 
@@ -60,57 +52,90 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'ENGINEER'])
+  if (isNextResponse(auth)) return auth
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const isQAOrAdmin = ["QA", "ADMIN"].includes(session.user.role);
-
-    if (!isQAOrAdmin && session.user.role === "ENGINEER") {
+    // ENGINEER can only update own runs
+    if (auth.user.role === 'ENGINEER') {
       const existing = await prisma.testRun.findUnique({
         where: { id: params.id },
         select: { loggedById: true },
-      });
+      })
       if (!existing) {
-        return NextResponse.json(
-          { error: "Test run not found" },
-          { status: 404 }
-        );
+        return NextResponse.json({ error: 'Test run not found', code: 'NOT_FOUND' }, { status: 404 })
       }
-      if (existing.loggedById !== session.user.id) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      if (existing.loggedById !== auth.user.id) {
+        return NextResponse.json({ error: 'Forbidden', code: 'FORBIDDEN' }, { status: 403 })
       }
-    } else if (!isQAOrAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const parsed = updateTestRunSchema.safeParse(body);
+    const body = await req.json()
+    const parsed = UpdateTestRunSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten() },
+        { error: 'Validation failed', code: 'VALIDATION_ERROR', details: parsed.error.flatten() },
         { status: 400 }
-      );
+      )
     }
 
+    const { measuredValues, flightData, weatherData, ...runData } = parsed.data
     const testRun = await prisma.testRun.update({
       where: { id: params.id },
-      data: parsed.data,
+      data: {
+        ...runData,
+        ...(measuredValues && { measuredValues: measuredValues as any }),
+        ...(flightData && { flightData: flightData as any }),
+        ...(weatherData && { weatherData: weatherData as any }),
+      },
       include: {
         testCase: { select: { id: true, title: true, testType: true } },
         component: { select: { id: true, name: true } },
         loggedBy: { select: { id: true, name: true } },
       },
-    });
+    })
 
-    return NextResponse.json(testRun);
-  } catch (error) {
-    console.error("Error updating test run:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    await writeAuditLog({
+      action: 'UPDATE',
+      entityType: 'TestRun',
+      entityId: testRun.id,
+      userId: auth.user.id,
+      after: parsed.data as Record<string, unknown>,
+      ipAddress: req.headers.get('x-forwarded-for') ?? undefined,
+    })
+
+    return NextResponse.json(testRun)
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireRole(req, ['ADMIN', 'QA'])
+  if (isNextResponse(auth)) return auth
+
+  try {
+    const existing = await prisma.testRun.findUnique({ where: { id: params.id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Test run not found', code: 'NOT_FOUND' }, { status: 404 })
+    }
+
+    await prisma.testRun.delete({ where: { id: params.id } })
+
+    await writeAuditLog({
+      action: 'DELETE',
+      entityType: 'TestRun',
+      entityId: params.id,
+      userId: auth.user.id,
+      before: { testCaseId: existing.testCaseId, status: existing.status },
+      ipAddress: req.headers.get('x-forwarded-for') ?? undefined,
+    })
+
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }

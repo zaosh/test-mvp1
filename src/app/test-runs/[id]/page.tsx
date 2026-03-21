@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { StatusPill, TypePill } from "@/components/shared/StatusPill";
+import { ConfirmModal } from "@/components/shared/ConfirmModal";
 
 interface Issue {
   id: string;
@@ -86,11 +87,13 @@ export default function TestRunDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  const { status: authStatus } = useSession();
+  const { data: session, status: authStatus } = useSession();
 
   const [run, setRun] = useState<TestRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -117,6 +120,21 @@ export default function TestRunDetailPage() {
       hour: "2-digit",
       minute: "2-digit",
     });
+
+  const sessionUser = session?.user as { role?: string } | undefined;
+  const canDelete =
+    sessionUser?.role === "ADMIN" || sessionUser?.role === "QA";
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/test-runs/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete test run");
+      router.push("/test-runs");
+    } catch {
+      setDeleting(false);
+    }
+  };
 
   if (authStatus === "loading" || loading) {
     return (
@@ -182,11 +200,21 @@ export default function TestRunDetailPage() {
               </span>
             </div>
           </div>
-          <div className="text-right space-y-1">
-            <div className="text-sm text-[#8888a8]">{formatDate(run.runDate)}</div>
-            <div className="text-sm text-[#555570]">
-              by {run.loggedBy.name}
+          <div className="flex items-start gap-3">
+            <div className="text-right space-y-1">
+              <div className="text-sm text-[#8888a8]">{formatDate(run.runDate)}</div>
+              <div className="text-sm text-[#555570]">
+                by {run.loggedBy.name}
+              </div>
             </div>
+            {canDelete && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="border border-[#ef4444]/30 text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -529,6 +557,17 @@ export default function TestRunDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={showDeleteModal}
+        title="Delete Test Run"
+        description="This test run will be soft-deleted and hidden from lists."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+        loading={deleting}
+      />
     </div>
   );
 }

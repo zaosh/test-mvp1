@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { StatusPill, TypePill } from "@/components/shared/StatusPill";
+import { Pagination } from "@/components/shared/Pagination";
+import { EmptyState, EMPTY_ICONS } from "@/components/shared/EmptyState";
 
 interface TestCaseSummary {
   id: string;
@@ -33,6 +35,9 @@ export default function TestCasesPage() {
   const [loading, setLoading] = useState(true);
   const [components, setComponents] = useState<FilterOption[]>([]);
   const [users, setUsers] = useState<FilterOption[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
 
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
@@ -56,7 +61,12 @@ export default function TestCasesPage() {
       .catch(() => setUsers([]));
   }, []);
 
-  // Fetch test cases with filters
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, typeFilter, componentFilter, ownerFilter, hasForksOnly]);
+
+  // Fetch test cases with filters and pagination
   useEffect(() => {
     const params = new URLSearchParams();
     if (statusFilter !== "All") params.set("status", statusFilter);
@@ -64,14 +74,24 @@ export default function TestCasesPage() {
     if (componentFilter !== "All") params.set("componentId", componentFilter);
     if (ownerFilter !== "All") params.set("ownerId", ownerFilter);
     if (hasForksOnly) params.set("hasForksOnly", "true");
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
 
     setLoading(true);
     fetch(`/api/test-cases?${params.toString()}`)
       .then((r) => r.json())
-      .then((data) => setCases(Array.isArray(data) ? data : []))
-      .catch(() => setCases([]))
+      .then((data) => {
+        if (data && !Array.isArray(data) && Array.isArray(data.data)) {
+          setCases(data.data);
+          setTotal(data.total);
+        } else {
+          setCases(Array.isArray(data) ? data : []);
+          setTotal(Array.isArray(data) ? data.length : 0);
+        }
+      })
+      .catch(() => { setCases([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, [statusFilter, typeFilter, componentFilter, ownerFilter, hasForksOnly]);
+  }, [statusFilter, typeFilter, componentFilter, ownerFilter, hasForksOnly, page]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-[#e8e8f0] p-8">
@@ -156,7 +176,13 @@ export default function TestCasesPage() {
         {loading ? (
           <div className="p-6 text-center text-[#8888a8]">Loading...</div>
         ) : cases.length === 0 ? (
-          <div className="p-6 text-center text-[#555570]">No test cases found.</div>
+          <EmptyState
+            icon={EMPTY_ICONS.testCase}
+            title="No test cases found"
+            description="Create your first test case to start tracking tests."
+            actionLabel={canCreate ? "Create Test Case" : undefined}
+            actionHref={canCreate ? "/test-cases/new" : undefined}
+          />
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -210,6 +236,7 @@ export default function TestCasesPage() {
             </tbody>
           </table>
         )}
+        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
       </div>
     </div>
   );

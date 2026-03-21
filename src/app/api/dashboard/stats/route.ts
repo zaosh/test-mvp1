@@ -1,76 +1,32 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { requireRole, isNextResponse } from '@/lib/roles'
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'MANAGER'])
+  if (isNextResponse(auth)) return auth
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
-    if (!["ADMIN", "QA", "MANAGER"].includes(session.user.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const [totalActiveTests, passedThisMonth, openIssues, overdueTests] = await Promise.all([
+      prisma.testCase.count({
+        where: { status: { notIn: ['CONCLUDED', 'WAIVED', 'DRAFT'] } },
+      }),
+      prisma.testRun.count({
+        where: { status: 'PASSED', runDate: { gte: startOfMonth } },
+      }),
+      prisma.issue.count({
+        where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      }),
+      prisma.testCase.count({
+        where: { nextDueDate: { lt: now }, status: { not: 'CONCLUDED' } },
+      }),
+    ])
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [totalActiveTests, passedThisMonth, openIssues, overdueTests] =
-      await Promise.all([
-        // Active test cases (not CONCLUDED, WAIVED, or DRAFT)
-        prisma.testCase.count({
-          where: {
-            status: {
-              notIn: ["CONCLUDED", "WAIVED", "DRAFT"],
-            },
-          },
-        }),
-
-        // Test runs passed this month
-        prisma.testRun.count({
-          where: {
-            status: "PASSED",
-            runDate: {
-              gte: startOfMonth,
-            },
-          },
-        }),
-
-        // Open issues (OPEN or IN_PROGRESS)
-        prisma.issue.count({
-          where: {
-            status: {
-              in: ["OPEN", "IN_PROGRESS"],
-            },
-          },
-        }),
-
-        // Overdue test cases
-        prisma.testCase.count({
-          where: {
-            nextDueDate: {
-              lt: now,
-            },
-            status: {
-              not: "CONCLUDED",
-            },
-          },
-        }),
-      ]);
-
-    return NextResponse.json({
-      totalActiveTests,
-      passedThisMonth,
-      openIssues,
-      overdueTests,
-    });
-  } catch (error) {
-    console.error("Error fetching dashboard stats:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ totalActiveTests, passedThisMonth, openIssues, overdueTests })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }

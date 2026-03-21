@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
 import { StatusPill } from "./StatusPill";
 
 interface SidebarProps {
@@ -17,7 +16,7 @@ interface SidebarProps {
 const NAV_ITEMS = [
   {
     href: "/master",
-    label: "Master Dashboard",
+    label: "Dashboard",
     roles: ["ADMIN", "QA", "MANAGER"],
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -122,7 +121,7 @@ export function Sidebar({ user, openIssueCount = 0 }: SidebarProps) {
       {/* Logo */}
       <div className="px-5 py-5 border-b border-[#2a2a38]">
         <span className="font-mono text-sm font-semibold tracking-widest text-[#e8e8f0]">
-          DRONETEST
+          TESTLAB
         </span>
       </div>
 
@@ -162,17 +161,6 @@ export function Sidebar({ user, openIssueCount = 0 }: SidebarProps) {
             <p className="text-sm font-medium truncate">{user.name}</p>
             <StatusPill status={user.role} />
           </div>
-          <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="text-[#555570] hover:text-[#e8e8f0] transition-colors p-1"
-            title="Logout"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-          </button>
         </div>
       </div>
     </aside>

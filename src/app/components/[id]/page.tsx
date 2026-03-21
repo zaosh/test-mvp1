@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { StatusPill, TypePill } from "@/components/shared/StatusPill";
+import { ConfirmModal } from "@/components/shared/ConfirmModal";
 
 interface ComponentDetail {
   id: string;
@@ -47,7 +48,7 @@ export default function ComponentDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  const { status: authStatus } = useSession();
+  const { data: session, status: authStatus } = useSession();
 
   const [component, setComponent] = useState<ComponentDetail | null>(null);
   const [testRuns, setTestRuns] = useState<TestRun[]>([]);
@@ -55,6 +56,8 @@ export default function ComponentDetailPage() {
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -100,6 +103,21 @@ export default function ComponentDetailPage() {
   const activeIssues = issues.filter(
     (i) => i.status === "OPEN" || i.status === "IN_PROGRESS"
   );
+
+  const sessionUser = session?.user as { role?: string } | undefined;
+  const canDelete =
+    sessionUser?.role === "ADMIN" || sessionUser?.role === "QA";
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/components/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete component");
+      router.push("/components");
+    } catch {
+      setDeleting(false);
+    }
+  };
 
   if (authStatus === "loading" || loading) {
     return (
@@ -160,26 +178,36 @@ export default function ComponentDetailPage() {
               <StatusPill status={component.status} size="md" />
             </div>
           </div>
-          <div className="space-y-1 text-right">
-            {component.version && (
-              <div>
-                <span className="text-xs text-[#555570] uppercase tracking-wider">
-                  Version{" "}
-                </span>
-                <span className="font-mono-value text-sm text-[#e8e8f0]">
-                  {component.version}
-                </span>
-              </div>
-            )}
-            {component.serialNumber && (
-              <div>
-                <span className="text-xs text-[#555570] uppercase tracking-wider">
-                  S/N{" "}
-                </span>
-                <span className="font-mono-value text-sm text-[#e8e8f0]">
-                  {component.serialNumber}
-                </span>
-              </div>
+          <div className="flex items-start gap-3">
+            <div className="space-y-1 text-right">
+              {component.version && (
+                <div>
+                  <span className="text-xs text-[#555570] uppercase tracking-wider">
+                    Version{" "}
+                  </span>
+                  <span className="font-mono-value text-sm text-[#e8e8f0]">
+                    {component.version}
+                  </span>
+                </div>
+              )}
+              {component.serialNumber && (
+                <div>
+                  <span className="text-xs text-[#555570] uppercase tracking-wider">
+                    S/N{" "}
+                  </span>
+                  <span className="font-mono-value text-sm text-[#e8e8f0]">
+                    {component.serialNumber}
+                  </span>
+                </div>
+              )}
+            </div>
+            {canDelete && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="border border-[#ef4444]/30 text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Delete
+              </button>
             )}
           </div>
         </div>
@@ -351,6 +379,17 @@ export default function ComponentDetailPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={showDeleteModal}
+        title="Delete Component"
+        description="This component will be soft-deleted and hidden from lists."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+        loading={deleting}
+      />
     </div>
   );
 }

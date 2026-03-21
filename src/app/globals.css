@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  --bg: #0a0a0f;
   --background: #0a0a0f;
   --surface: #111118;
   --surface-elevated: #1a1a24;
@@ -11,6 +12,22 @@
   --text-secondary: #8888a8;
   --text-muted: #555570;
   --foreground: var(--text-primary);
+
+  --flight: #38bdf8;
+  --compliance: #f59e0b;
+  --software: #a78bfa;
+  --firmware: #a78bfa;
+  --hardware: #94a3b8;
+  --maintenance: #34d399;
+  --experimental: #fb923c;
+
+  --passed: #22c55e;
+  --failed: #ef4444;
+  --in-progress: #3b82f6;
+  --blocked: #f97316;
+  --concluded: #8b5cf6;
+  --planned: #6b7280;
+  --draft: #374151;
 }
 
 * {

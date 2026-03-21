@@ -1,98 +1,117 @@
-# DRONETEST — Internal Testing Database
+# TESTLAB — Internal Testing Database
 
-Production-grade internal testing database for drone engineering teams. Manages test plans, test cases (with forking), test runs, issues, and compliance archives with full role-based access control.
+Production-grade, security-hardened internal testing database for engineering teams. Manages test plans, test cases (with forking), test runs, issues, and compliance archives with full role-based access control and audit logging.
 
 ## Prerequisites
 
 - Node.js 18+
-- Docker & Docker Compose
+- Docker + Docker Compose
+- mkcert (for local HTTPS — required, not optional)
 
-## Setup
+## First-Time Setup
 
 ```bash
-# 1. Copy environment file
+# 1. Copy environment file and fill in ALL variables
 cp .env.local.example .env.local
 
-# 2. Start PostgreSQL and pgAdmin
+# 2. Generate local HTTPS certificates
+mkcert -install && mkcert localhost
+
+# 3. Start PostgreSQL (prod config — no pgAdmin)
 docker compose up -d
 
-# 3. Install dependencies
+# 4. Install dependencies
 npm install
 
-# 4. Run database migrations
+# 5. Run database migrations
 npx prisma migrate dev --name init
 
-# 5. Seed the database
+# 6. Set seed passwords in .env.local (SEED_*_PASSWORD vars)
+# Then seed the database
 npx prisma db seed
 
-# 6. Start the development server
+# 7. Start the development server
 npm run dev
 ```
 
-## Login Credentials
+## Backup Setup (required)
 
-| Email                        | Password  | Role     |
-|------------------------------|-----------|----------|
-| admin@dronetest.internal     | admin123  | ADMIN    |
-| qa@dronetest.internal        | qa123     | QA       |
-| eng1@dronetest.internal      | eng123    | ENGINEER |
-| eng2@dronetest.internal      | eng123    | ENGINEER |
-| manager@dronetest.internal   | mgr123   | MANAGER  |
+```bash
+chmod +x scripts/backup.sh
+# Add to crontab:
+# 0 2 * * * /absolute/path/to/scripts/backup.sh
+# Verify backup directory: /var/testlab/backups
+```
 
-## URLs
+## Login
 
-| Service   | URL                          |
-|-----------|------------------------------|
-| App       | http://localhost:3000         |
-| pgAdmin   | http://localhost:5050         |
+All seeded users must change password on first login. Credentials are whatever you set in `SEED_*_PASSWORD` env vars.
 
-pgAdmin login: `admin@dronetest.internal` / `admin123`
+| Email                        | Role     |
+|------------------------------|----------|
+| admin@testlab.internal     | ADMIN    |
+| qa@testlab.internal        | QA       |
+| eng1@testlab.internal      | ENGINEER |
+| eng2@testlab.internal      | ENGINEER |
+| manager@testlab.internal   | MANAGER  |
 
 ## Role Permissions
 
-| Action                          | ADMIN | QA | ENGINEER | MANAGER |
-|---------------------------------|:-----:|:--:|:--------:|:-------:|
-| Master Dashboard                |  Yes  | Yes|    No    |   Yes   |
-| View all pages                  |  Yes  | Yes|   Yes    |   Yes   |
-| Create/edit test cases & plans  |  Yes  | Yes|    No    | Read-only|
-| Create test runs                |  Yes  | Yes|   Yes    |    No   |
-| Create/update issues            |  Yes  | Yes| Own only |    No   |
-| Conclude tests                  |  Yes  | Yes|    No    |    No   |
-| Create archives                 |  Yes  | Yes|    No    |    No   |
+| Role     | Access                                           |
+|----------|--------------------------------------------------|
+| ADMIN    | Full access, user management, session revocation |
+| QA       | Full test access, create archives, conclude tests|
+| ENGINEER | Log runs, create/update own issues, read tests   |
+| MANAGER  | Read-only everywhere                             |
 
 ## How to Fork a Test
 
-1. Navigate to a test case detail page
+1. Open any test case
 2. Click "Fork this test"
-3. Enter a fork reason and optionally override parameters
-4. The fork inherits all parent fields with `forkDepth + 1`
-5. View the full fork tree at `/test-cases/[id]/forks`
-6. Compare two forks side-by-side by selecting them in the tree
+3. Enter fork reason (required, min 10 chars)
+4. Override any parameters you want to change
+5. New fork appears in the fork tree at depth + 1
+6. Max depth: 5 levels
 
 ## How to Conclude and Archive
 
-1. Run all test cases in a test plan
-2. On each test case detail page, click "Conclude this test"
-   - Mark one fork as "canonical" if applicable
-   - All sibling forks lose canonical status when one is marked
-3. When all test cases in a plan are concluded, the plan status updates automatically
-4. Navigate to the test plan and click "Conclude Plan" to create an archive
-5. Archives are immutable and include all findings, test results, and fork history
+1. All test cases in a plan must be in CONCLUDED or WAIVED status
+2. Open the test plan — "Conclude Plan" button becomes active
+3. Fill in: title, category, outcome, summary, findings
+4. Archive is created and immutable immediately
+5. Test plan is marked CONCLUDED
+
+## Security Notes
+
+- **Password hashing**: argon2id (memoryCost: 65536, timeCost: 3, parallelism: 4)
+- **Sessions**: expire after 8 hours, httpOnly, sameSite strict
+- **Account lockout**: 5 failed login attempts → 15 min lockout
+- **Force password change**: all seeded users must change password on first login
+- **Session revocation**: ADMIN can force-logout any user via API
+- **Audit logging**: all mutations logged to AuditLog (append-only)
+- **Archives**: immutable — no update or delete routes exist
+- **File attachments**: served through authenticated API only, stored outside web root
+- **Input validation**: Zod schemas on every API route, parameterized queries only
+- **CORS/CSP**: security headers on all API routes
+- **pgAdmin**: run with `docker compose -f docker-compose.dev.yml up` — never run in production
 
 ## Tech Stack
 
 - **Framework**: Next.js 14 (App Router, TypeScript)
-- **Database**: PostgreSQL 15 via Docker
-- **ORM**: Prisma 5.22.0
+- **Database**: PostgreSQL 15 via Docker (bound to 127.0.0.1 only)
+- **ORM**: Prisma
+- **Auth**: NextAuth.js (credentials, JWT, role-based, hardened)
+- **Password hashing**: argon2
 - **Styling**: TailwindCSS
-- **Auth**: NextAuth.js v4 (credentials, JWT, role-based)
 - **Charts**: Recharts
-- **Validation**: Zod
-- **Forms**: React Hook Form
+- **Validation**: Zod + React Hook Form
+- **Dates**: date-fns
 
 ## Phase 2 Roadmap
 
-- **GitHub Webhooks**: POST `/api/webhooks/github` — receives GitHub events, auto-creates test plans from templates
-- **GitHub Status API**: Push test results back to GitHub on archive creation
-- **PDF Export**: Generate downloadable PDF reports from archives
-- **Email Notifications**: Notify assignees on issue creation, test plan conclusion, and overdue tests
+- GitHub webhook: auto-create test plans on PR/release events
+- GitHub Status API: push test outcome to commit status
+- Email notifications: overdue tests, critical issues
+- PDF export for archive documents
+- Two-factor authentication
+- SSO / SAML integration

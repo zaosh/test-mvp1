@@ -44,6 +44,12 @@ enum TestStatus {
   WAIVED
 }
 
+enum TestVisibility {
+  PUBLIC
+  TEAM
+  RESTRICTED
+}
+
 enum RunEnvironment {
   LAB
   FIELD
@@ -82,17 +88,36 @@ enum ArchiveOutcome {
   INCONCLUSIVE
 }
 
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  CONCLUDE
+  FORK
+  ARCHIVE
+  ROLE_CHANGE
+  PASSWORD_CHANGE
+  LOGIN_FAILED
+  ACCOUNT_LOCKED
+}
+
 // --- MODELS ---
 
 model User {
-  id             String   @id @default(cuid())
-  name           String
-  email          String   @unique
-  passwordHash   String
-  role           Role     @default(ENGINEER)
-  avatarInitials String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  name               String
+  email              String    @unique
+  passwordHash       String
+  role               Role      @default(ENGINEER)
+  avatarInitials     String?
+  mustChangePassword Boolean   @default(true)
+  sessionVersion     Int       @default(0)
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   testCasesOwned  TestCase[] @relation("TestCaseOwner")
   testRunsLogged  TestRun[]  @relation("TestRunLogger")
@@ -100,6 +125,7 @@ model User {
   issuesCreated   Issue[]    @relation("IssueCreator")
   archivesCreated Archive[]
   concludedCases  TestCase[] @relation("TestCaseConcluder")
+  auditLogs       AuditLog[]
 }
 
 model Component {
@@ -111,12 +137,16 @@ model Component {
   description  String?
   status       String        @default("ACTIVE")
   metadata     Json?
+  deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   testCases TestCase[]
   testRuns  TestRun[]
   issues    Issue[]
+
+  @@index([type])
+  @@index([deletedAt])
 }
 
 model TestPlan {
@@ -137,23 +167,25 @@ model TestPlan {
 }
 
 model TestCase {
-  id             String     @id @default(cuid())
+  id             String         @id @default(cuid())
   title          String
   objective      String
   testType       TestType
-  status         TestStatus @default(DRAFT)
+  status         TestStatus     @default(DRAFT)
+  visibility     TestVisibility @default(PUBLIC)
   parameters     Json
   passCriteria   String
   steps          Json
   frequency      String?
   nextDueDate    DateTime?
-  forkDepth      Int        @default(0)
+  forkDepth      Int            @default(0)
   forkReason     String?
-  isCanonical    Boolean    @default(false)
+  isCanonical    Boolean        @default(false)
   concludedAt    DateTime?
   concludedNotes String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   parentId String?
   parent   TestCase?  @relation("Forks", fields: [parentId], references: [id])
@@ -174,6 +206,14 @@ model TestCase {
   githubRef      GitHubRef?
   testRuns       TestRun[]
   archiveEntries ArchiveTestCase[]
+
+  @@index([status])
+  @@index([testType])
+  @@index([ownerId])
+  @@index([componentId])
+  @@index([testPlanId])
+  @@index([deletedAt])
+  @@index([createdAt])
 }
 
 model TestRun {
@@ -183,10 +223,10 @@ model TestRun {
   status         TestStatus
   notes          String?
   measuredValues Json?
-  attachments    String[]
   flightData     Json?
   weatherData    Json?
   location       String?
+  deletedAt      DateTime?
   createdAt      DateTime       @default(now())
 
   testCaseId String
@@ -198,7 +238,29 @@ model TestRun {
   loggedById String
   loggedBy   User   @relation("TestRunLogger", fields: [loggedById], references: [id])
 
-  issues Issue[]
+  attachments Attachment[]
+  issues      Issue[]
+
+  @@index([testCaseId])
+  @@index([componentId])
+  @@index([loggedById])
+  @@index([status])
+  @@index([runDate])
+  @@index([deletedAt])
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  storedName   String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  testRunId String?
+  testRun   TestRun? @relation(fields: [testRunId], references: [id])
 }
 
 model Issue {
@@ -209,6 +271,7 @@ model Issue {
   status          IssueStatus   @default(OPEN)
   resolutionNotes String?
   deferredTo      String?
+  deletedAt       DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   resolvedAt      DateTime?
@@ -220,10 +283,18 @@ model Issue {
   component   Component? @relation(fields: [componentId], references: [id])
 
   assigneeId String?
-  assignee   User?  @relation("IssueAssignee", fields: [assigneeId], references: [id])
+  assignee   User?   @relation("IssueAssignee", fields: [assigneeId], references: [id])
 
   createdById String
   createdBy   User   @relation("IssueCreator", fields: [createdById], references: [id])
+
+  @@index([severity])
+  @@index([status])
+  @@index([assigneeId])
+  @@index([componentId])
+  @@index([testRunId])
+  @@index([deletedAt])
+  @@index([createdAt])
 }
 
 model GitHubRef {
@@ -254,7 +325,6 @@ model Archive {
   attachments String[]
   tags        String[]
   searchIndex String
-  isImmutable Boolean         @default(true)
   archivedAt  DateTime        @default(now())
   createdAt   DateTime        @default(now())
 
@@ -268,7 +338,7 @@ model Archive {
 }
 
 model ArchiveTestCase {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   archiveId    String
   archive      Archive  @relation(fields: [archiveId], references: [id])
   testCaseId   String
@@ -276,4 +346,23 @@ model ArchiveTestCase {
   wasCanonical Boolean  @default(false)
 
   @@unique([archiveId, testCaseId])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  action     AuditAction
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  userAgent  String?
+  timestamp  DateTime    @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([timestamp])
 }

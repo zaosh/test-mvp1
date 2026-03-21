@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/shared/StatusPill";
+import { EmptyState, EMPTY_ICONS } from "@/components/shared/EmptyState";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -206,8 +207,12 @@ export default function ArchivesPage() {
             {error}
           </div>
         ) : archives.length === 0 ? (
-          <div className="flex items-center justify-center py-20 text-[#555570]">
-            No archives found.
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg">
+            <EmptyState
+              icon={EMPTY_ICONS.archive}
+              title="No archives found"
+              description="Archives are created when test plans are concluded. No archives match your current filters."
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

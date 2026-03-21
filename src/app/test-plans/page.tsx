@@ -5,6 +5,8 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { GitHubRefBadge } from "@/components/shared/GitHubRefBadge";
+import { Pagination } from "@/components/shared/Pagination";
+import { EmptyState, EMPTY_ICONS } from "@/components/shared/EmptyState";
 
 interface TestPlan {
   id: string;
@@ -40,21 +42,38 @@ export default function TestPlansPage() {
   const [plans, setPlans] = useState<TestPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("All");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
 
   const role = (session?.user as any)?.role as string | undefined;
   const canCreate = role === "QA" || role === "ADMIN";
 
   useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
+  useEffect(() => {
     const params = new URLSearchParams();
     if (statusFilter !== "All") params.set("status", statusFilter);
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
 
     setLoading(true);
     fetch(`/api/test-plans?${params.toString()}`)
       .then((r) => r.json())
-      .then((data) => setPlans(Array.isArray(data) ? data : []))
-      .catch(() => setPlans([]))
+      .then((data) => {
+        if (data && !Array.isArray(data) && Array.isArray(data.data)) {
+          setPlans(data.data);
+          setTotal(data.total);
+        } else {
+          setPlans(Array.isArray(data) ? data : []);
+          setTotal(Array.isArray(data) ? data.length : 0);
+        }
+      })
+      .catch(() => { setPlans([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, [statusFilter]);
+  }, [statusFilter, page]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-[#e8e8f0] p-8">
@@ -92,9 +111,13 @@ export default function TestPlansPage() {
         {loading ? (
           <div className="p-6 text-center text-[#8888a8]">Loading...</div>
         ) : plans.length === 0 ? (
-          <div className="p-6 text-center text-[#555570]">
-            No test plans found.
-          </div>
+          <EmptyState
+            icon={EMPTY_ICONS.testPlan}
+            title="No test plans found"
+            description="Create a test plan to organize your test cases."
+            actionLabel={canCreate ? "Create Plan" : undefined}
+            actionHref={canCreate ? "/test-plans/new" : undefined}
+          />
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -141,6 +164,7 @@ export default function TestPlansPage() {
             </tbody>
           </table>
         )}
+        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
       </div>
     </div>
   );

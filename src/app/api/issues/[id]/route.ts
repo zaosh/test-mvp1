@@ -1,54 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { z } from "zod";
-
-const updateIssueSchema = z.object({
-  title: z.string().min(1).optional(),
-  description: z.string().optional(),
-  severity: z.string().optional(),
-  status: z.string().optional(),
-  resolutionNotes: z.string().optional().nullable(),
-  assigneeId: z.string().optional().nullable(),
-  deferredTo: z.string().optional().nullable(),
-});
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { requireRole, isNextResponse } from '@/lib/roles'
+import { writeAuditLog } from '@/lib/audit'
+import { IssueUpdateSchema } from '@/lib/sanitize'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'ENGINEER', 'MANAGER'])
+  if (isNextResponse(auth)) return auth
 
+  try {
     const issue = await prisma.issue.findUnique({
       where: { id: params.id },
       include: {
-        testRun: {
-          include: {
-            testCase: true,
-          },
-        },
+        testRun: { include: { testCase: true } },
         component: true,
         assignee: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true, email: true } },
       },
-    });
+    })
 
     if (!issue) {
-      return NextResponse.json({ error: "Issue not found" }, { status: 404 });
+      return NextResponse.json({ error: 'Issue not found', code: 'NOT_FOUND' }, { status: 404 })
     }
 
-    return NextResponse.json(issue);
-  } catch (error) {
-    console.error("Error fetching issue:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json(issue)
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }
 
@@ -56,48 +36,46 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'ENGINEER'])
+  if (isNextResponse(auth)) return auth
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const isQAOrAdmin = ["QA", "ADMIN"].includes(session.user.role);
-
-    if (!isQAOrAdmin && session.user.role === "ENGINEER") {
+    // ENGINEER can only update own assigned issues
+    if (auth.user.role === 'ENGINEER') {
       const existing = await prisma.issue.findUnique({
         where: { id: params.id },
-        select: { assigneeId: true },
-      });
+        select: { assigneeId: true, createdById: true },
+      })
       if (!existing) {
-        return NextResponse.json(
-          { error: "Issue not found" },
-          { status: 404 }
-        );
+        return NextResponse.json({ error: 'Issue not found', code: 'NOT_FOUND' }, { status: 404 })
       }
-      if (existing.assigneeId !== session.user.id) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      if (existing.assigneeId !== auth.user.id && existing.createdById !== auth.user.id) {
+        return NextResponse.json({ error: 'Forbidden', code: 'FORBIDDEN' }, { status: 403 })
       }
-    } else if (!isQAOrAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const parsed = updateIssueSchema.safeParse(body);
+    const body = await req.json()
+    const parsed = IssueUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten() },
+        { error: 'Validation failed', code: 'VALIDATION_ERROR', details: parsed.error.flatten() },
         { status: 400 }
-      );
+      )
     }
 
-    const { status, ...rest } = parsed.data;
+    const { status, ...rest } = parsed.data
+    const updateData: Record<string, unknown> = { ...rest }
 
-    const updateData: any = { ...rest };
     if (status) {
-      updateData.status = status;
-      if (status === "RESOLVED") {
-        updateData.resolvedAt = new Date();
+      updateData.status = status
+      if (status === 'RESOLVED') {
+        if (!parsed.data.resolutionNotes) {
+          return NextResponse.json(
+            { error: 'Resolution notes required to resolve an issue', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          )
+        }
+        updateData.resolvedAt = new Date()
       }
     }
 
@@ -105,24 +83,54 @@ export async function PUT(
       where: { id: params.id },
       data: updateData,
       include: {
-        testRun: {
-          select: {
-            id: true,
-            testCase: { select: { title: true } },
-          },
-        },
+        testRun: { select: { id: true, testCase: { select: { title: true } } } },
         component: { select: { id: true, name: true } },
         assignee: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
       },
-    });
+    })
 
-    return NextResponse.json(issue);
-  } catch (error) {
-    console.error("Error updating issue:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    await writeAuditLog({
+      action: 'UPDATE',
+      entityType: 'Issue',
+      entityId: issue.id,
+      userId: auth.user.id,
+      after: parsed.data as Record<string, unknown>,
+      ipAddress: req.headers.get('x-forwarded-for') ?? undefined,
+    })
+
+    return NextResponse.json(issue)
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireRole(req, ['ADMIN', 'QA'])
+  if (isNextResponse(auth)) return auth
+
+  try {
+    const existing = await prisma.issue.findUnique({ where: { id: params.id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Issue not found', code: 'NOT_FOUND' }, { status: 404 })
+    }
+
+    await prisma.issue.delete({ where: { id: params.id } })
+
+    await writeAuditLog({
+      action: 'DELETE',
+      entityType: 'Issue',
+      entityId: params.id,
+      userId: auth.user.id,
+      before: { title: existing.title, severity: existing.severity },
+      ipAddress: req.headers.get('x-forwarded-for') ?? undefined,
+    })
+
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }

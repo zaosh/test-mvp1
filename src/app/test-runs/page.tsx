@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { StatusPill } from "@/components/shared/StatusPill";
+import { Pagination } from "@/components/shared/Pagination";
+import { EmptyState, EMPTY_ICONS } from "@/components/shared/EmptyState";
 
 interface TestCase {
   id: string;
@@ -49,6 +51,9 @@ export default function TestRunsPage() {
   const [components, setComponents] = useState<Component[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
 
   // Filters
   const [filterTestCase, setFilterTestCase] = useState("");
@@ -59,6 +64,7 @@ export default function TestRunsPage() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
 
+  // Fetch lookup data
   useEffect(() => {
     if (authStatus === "unauthenticated") {
       router.push("/login");
@@ -66,37 +72,55 @@ export default function TestRunsPage() {
     }
     if (authStatus === "authenticated") {
       Promise.all([
-        fetch("/api/test-runs").then((r) => r.json()),
         fetch("/api/test-cases").then((r) => r.json()),
         fetch("/api/components").then((r) => r.json()),
         fetch("/api/users").then((r) => r.json()),
       ])
-        .then(([runsData, casesData, compsData, usersData]) => {
-          setRuns(runsData);
+        .then(([casesData, compsData, usersData]) => {
           setTestCases(casesData);
           setComponents(compsData);
           setUsers(usersData);
         })
-        .catch(console.error)
-        .finally(() => setLoading(false));
+        .catch(console.error);
     }
   }, [authStatus, router]);
 
-  const filteredRuns = runs.filter((run) => {
-    if (filterTestCase && run.testCaseId !== filterTestCase) return false;
-    if (filterComponent && run.componentId !== filterComponent) return false;
-    if (filterStatus && run.status !== filterStatus) return false;
-    if (filterEnvironment && run.environment !== filterEnvironment) return false;
-    if (filterLoggedBy && run.loggedById !== filterLoggedBy) return false;
-    if (filterDateFrom && new Date(run.runDate) < new Date(filterDateFrom))
-      return false;
-    if (filterDateTo) {
-      const to = new Date(filterDateTo);
-      to.setHours(23, 59, 59, 999);
-      if (new Date(run.runDate) > to) return false;
-    }
-    return true;
-  });
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [filterTestCase, filterComponent, filterStatus, filterEnvironment, filterLoggedBy, filterDateFrom, filterDateTo]);
+
+  // Fetch runs with server-side pagination
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    const params = new URLSearchParams();
+    if (filterTestCase) params.set("testCaseId", filterTestCase);
+    if (filterComponent) params.set("componentId", filterComponent);
+    if (filterStatus) params.set("status", filterStatus);
+    if (filterEnvironment) params.set("environment", filterEnvironment);
+    if (filterLoggedBy) params.set("loggedById", filterLoggedBy);
+    if (filterDateFrom) params.set("dateFrom", filterDateFrom);
+    if (filterDateTo) params.set("dateTo", filterDateTo);
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+
+    setLoading(true);
+    fetch(`/api/test-runs?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !Array.isArray(data) && Array.isArray(data.data)) {
+          setRuns(data.data);
+          setTotal(data.total);
+        } else {
+          setRuns(Array.isArray(data) ? data : []);
+          setTotal(Array.isArray(data) ? data.length : 0);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [authStatus, filterTestCase, filterComponent, filterStatus, filterEnvironment, filterLoggedBy, filterDateFrom, filterDateTo, page]);
+
+  const filteredRuns = runs;
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -264,11 +288,14 @@ export default function TestRunsPage() {
             <tbody>
               {filteredRuns.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="text-center text-[#555570] py-12 text-sm"
-                  >
-                    No test runs found
+                  <td colSpan={7}>
+                    <EmptyState
+                      icon={EMPTY_ICONS.testRun}
+                      title="No test runs found"
+                      description="Log your first test run to start capturing results."
+                      actionLabel="Log New Run"
+                      actionHref="/test-runs/new"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -313,6 +340,7 @@ export default function TestRunsPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
       </div>
     </div>
   );

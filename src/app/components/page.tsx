@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { StatusPill, TypePill } from "@/components/shared/StatusPill";
+import { Pagination } from "@/components/shared/Pagination";
+import { EmptyState, EMPTY_ICONS } from "@/components/shared/EmptyState";
 
 interface Component {
   id: string;
@@ -22,9 +24,15 @@ export default function ComponentsPage() {
 
   const [components, setComponents] = useState<Component[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 18;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("");
+
+  // Fetch all component types for filter dropdown
+  const [componentTypes, setComponentTypes] = useState<string[]>([]);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -32,26 +40,47 @@ export default function ComponentsPage() {
       return;
     }
     if (authStatus === "authenticated") {
+      // Fetch all to get type list (no pagination)
       fetch("/api/components")
         .then((r) => r.json())
-        .then(setComponents)
-        .catch(console.error)
-        .finally(() => setLoading(false));
+        .then((data: Component[]) => {
+          setComponentTypes(Array.from(new Set(data.map((c) => c.type))));
+        })
+        .catch(() => {});
     }
   }, [authStatus, router]);
 
-  const componentTypes = Array.from(new Set(components.map((c) => c.type)));
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filterType]);
 
-  const filteredComponents = components.filter((c) => {
-    if (filterType && c.type !== filterType) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const nameMatch = c.name.toLowerCase().includes(q);
-      const serialMatch = c.serialNumber?.toLowerCase().includes(q);
-      if (!nameMatch && !serialMatch) return false;
-    }
-    return true;
-  });
+  // Fetch paginated components
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    const params = new URLSearchParams();
+    if (filterType) params.set("type", filterType);
+    if (searchQuery) params.set("search", searchQuery);
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+
+    setLoading(true);
+    fetch(`/api/components?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !Array.isArray(data) && Array.isArray(data.data)) {
+          setComponents(data.data);
+          setTotal(data.total);
+        } else {
+          setComponents(Array.isArray(data) ? data : []);
+          setTotal(Array.isArray(data) ? data.length : 0);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [authStatus, filterType, searchQuery, page]);
+
+  const filteredComponents = components;
 
   if (authStatus === "loading" || loading) {
     return (
@@ -96,9 +125,13 @@ export default function ComponentsPage() {
       </div>
 
       {/* Grid */}
-      {filteredComponents.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-[#555570] text-sm">No components found</p>
+      {filteredComponents.length === 0 && !loading ? (
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg">
+          <EmptyState
+            icon={EMPTY_ICONS.component}
+            title="No components found"
+            description="Register components to track testing against hardware and software."
+          />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -145,6 +178,12 @@ export default function ComponentsPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {!loading && filteredComponents.length > 0 && (
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg">
+          <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   DRONETEST — Setup & Launch
+echo   TESTLAB — Setup & Launch
 echo ============================================
 echo.
 
@@ -67,7 +67,7 @@ if %RETRIES% geq 30 (
     pause
     exit /b 1
 )
-docker exec dronetest-db pg_isready -U dronetest >nul 2>&1
+docker exec testlab-db pg_isready -U testlab >nul 2>&1
 if %errorlevel% neq 0 (
     set /a RETRIES+=1
     timeout /t 2 /nobreak >nul
@@ -98,11 +98,11 @@ echo   App:     http://localhost:3000
 echo   pgAdmin: http://localhost:5050
 echo.
 echo   Login credentials:
-echo     admin@dronetest.internal / admin123
-echo     qa@dronetest.internal    / qa123
-echo     eng1@dronetest.internal  / eng123
-echo     eng2@dronetest.internal  / eng123
-echo     manager@dronetest.internal / mgr123
+echo     admin@testlab.internal / admin123
+echo     qa@testlab.internal    / qa123
+echo     eng1@testlab.internal  / eng123
+echo     eng2@testlab.internal  / eng123
+echo     manager@testlab.internal / mgr123
 echo.
 echo   Starting dev server...
 echo   (Press Ctrl+C to stop)

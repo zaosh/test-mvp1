@@ -16,8 +16,14 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "DRONETEST — Internal Testing Database",
-  description: "Production-grade internal testing database for drone engineering teams",
+  title: {
+    default: "TESTLAB",
+    template: "%s | TESTLAB",
+  },
+  description: "Internal testing database for engineering teams",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

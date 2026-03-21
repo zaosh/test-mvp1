@@ -1,18 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { requireRole, isNextResponse } from '@/lib/roles'
+
+// GET only — no PUT, no DELETE. Archives are immutable.
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'ENGINEER', 'MANAGER'])
+  if (isNextResponse(auth)) return auth
 
+  try {
     const archive = await prisma.archive.findUnique({
       where: { id: params.id },
       include: {
@@ -30,21 +29,14 @@ export async function GET(
           },
         },
       },
-    });
+    })
 
     if (!archive) {
-      return NextResponse.json(
-        { error: "Archive not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Archive not found', code: 'NOT_FOUND' }, { status: 404 })
     }
 
-    return NextResponse.json(archive);
-  } catch (error) {
-    console.error("Error fetching archive:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json(archive)
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }

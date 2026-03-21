@@ -1,107 +1,99 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { z } from "zod";
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { requireRole, isNextResponse } from '@/lib/roles'
+import { writeAuditLog } from '@/lib/audit'
+import { TestPlanCreateSchema, GitHubRefSchema } from '@/lib/sanitize'
 
-const githubRefSchema = z.object({
-  repoUrl: z.string().url(),
-  commitSha: z.string().optional(),
-  prNumber: z.number().int().optional(),
-  releaseTag: z.string().optional(),
-  branchName: z.string().optional(),
-});
-
-const createTestPlanSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
-  milestone: z.string().optional(),
-  status: z.string().optional(),
-  startDate: z.string().datetime().optional(),
-  targetDate: z.string().datetime().optional(),
-  githubRef: githubRefSchema.optional(),
-});
+const CreateWithRefSchema = TestPlanCreateSchema.extend({
+  githubRef: GitHubRefSchema.optional(),
+})
 
 export async function GET(req: NextRequest) {
+  const auth = await requireRole(req, ['ADMIN', 'QA', 'ENGINEER', 'MANAGER'])
+  if (isNextResponse(auth)) return auth
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { searchParams } = new URL(req.url)
+    const status = searchParams.get('status')
+
+    const where: Record<string, unknown> = {}
+    if (status) where.status = status
+
+    const pageParam = searchParams.get('page')
+    const pageSizeParam = searchParams.get('pageSize')
+
+    const include = {
+      _count: { select: { testCases: true } },
+      githubRef: true,
     }
 
-    const { searchParams } = new URL(req.url);
-    const status = searchParams.get("status");
+    if (pageParam) {
+      const page = Math.max(1, parseInt(pageParam) || 1)
+      const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeParam || '20') || 20))
 
-    const where: any = {};
-    if (status) {
-      where.status = status;
+      const [testPlans, total] = await Promise.all([
+        prisma.testPlan.findMany({
+          where,
+          include,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        prisma.testPlan.count({ where }),
+      ])
+
+      return NextResponse.json({ data: testPlans, total, page, pageSize })
     }
 
     const testPlans = await prisma.testPlan.findMany({
       where,
-      include: {
-        _count: {
-          select: { testCases: true },
-        },
-        githubRef: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+      include,
+      orderBy: { createdAt: 'desc' },
+    })
 
-    return NextResponse.json(testPlans);
-  } catch (error) {
-    console.error("Error fetching test plans:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json(testPlans)
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(req, ['ADMIN', 'QA'])
+  if (isNextResponse(auth)) return auth
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!["QA", "ADMIN"].includes(session.user.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const body = await req.json();
-    const parsed = createTestPlanSchema.safeParse(body);
+    const body = await req.json()
+    const parsed = CreateWithRefSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten() },
+        { error: 'Validation failed', code: 'VALIDATION_ERROR', details: parsed.error.flatten() },
         { status: 400 }
-      );
+      )
     }
 
-    const { githubRef, startDate, targetDate, ...planData } = parsed.data;
+    const { githubRef, startDate, targetDate, ...planData } = parsed.data
 
     const testPlan = await prisma.testPlan.create({
       data: {
         ...planData,
         startDate: startDate ? new Date(startDate) : undefined,
         targetDate: targetDate ? new Date(targetDate) : undefined,
-        ...(githubRef && {
-          githubRef: {
-            create: githubRef,
-          },
-        }),
+        ...(githubRef && { githubRef: { create: githubRef } }),
       },
-      include: {
-        githubRef: true,
-      },
-    });
+      include: { githubRef: true },
+    })
 
-    return NextResponse.json(testPlan, { status: 201 });
-  } catch (error) {
-    console.error("Error creating test plan:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    await writeAuditLog({
+      action: 'CREATE',
+      entityType: 'TestPlan',
+      entityId: testPlan.id,
+      userId: auth.user.id,
+      after: { title: testPlan.title },
+      ipAddress: req.headers.get('x-forwarded-for') ?? undefined,
+    })
+
+    return NextResponse.json(testPlan, { status: 201 })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }

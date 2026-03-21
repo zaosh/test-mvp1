@@ -222,7 +222,7 @@ export default function MasterDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-[#e8e8f0]">
-          Master Dashboard
+          Dashboard
         </h1>
         <p className="text-[#555570] text-sm mt-1">
           {format(new Date(), "EEEE, MMMM d, yyyy")}

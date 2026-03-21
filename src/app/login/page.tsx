@@ -50,7 +50,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm bg-[#111118] border border-[#2a2a38] rounded-lg p-8">
         <div className="text-center mb-8">
           <h1 className="font-mono tracking-widest text-[#e8e8f0] text-xl font-semibold">
-            DRONETEST
+            TESTLAB
           </h1>
           <p className="text-[#555570] text-sm mt-2">
             Internal Testing Database

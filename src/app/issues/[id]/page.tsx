@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import { StatusPill, TypePill } from "@/components/shared/StatusPill";
+import { ConfirmModal } from "@/components/shared/ConfirmModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,6 +99,8 @@ export default function IssueDetailPage() {
   const [deferredTo, setDeferredTo] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // ---- Fetch issue ----
   useEffect(() => {
@@ -169,6 +172,18 @@ export default function IssueDetailPage() {
     }
   };
 
+  // ---- Handle delete ----
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/issues/${issueId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete issue");
+      router.push("/issues");
+    } catch {
+      setDeleting(false);
+    }
+  };
+
   // ---- Styles ----
   const inputClasses =
     "w-full bg-[#1a1a24] border border-[#2a2a38] text-[#e8e8f0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3b82f6] transition-colors placeholder:text-[#555570]";
@@ -215,6 +230,14 @@ export default function IssueDetailPage() {
             <span className="inline-flex items-center bg-[#1a1a24] border border-[#2a2a38] text-[#8888a8] text-xs rounded-full px-2.5 py-0.5">
               {ageDays(issue.createdAt)}d old
             </span>
+            {canUpdateStatus && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="border border-[#ef4444]/30 text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -368,6 +391,17 @@ export default function IssueDetailPage() {
             </form>
           </div>
         )}
+
+        <ConfirmModal
+          open={showDeleteModal}
+          title="Delete Issue"
+          description="This issue will be soft-deleted and hidden from lists."
+          confirmLabel="Delete"
+          confirmVariant="danger"
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteModal(false)}
+          loading={deleting}
+        />
       </div>
     </div>
   );

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/shared/StatusPill";
+import { Pagination } from "@/components/shared/Pagination";
+import { EmptyState, EMPTY_ICONS } from "@/components/shared/EmptyState";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +78,11 @@ export default function IssuesPage() {
   const [assigneeFilter, setAssigneeFilter] = useState<string>("");
   const [componentFilter, setComponentFilter] = useState<string>("");
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
+
   // Loading / error
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +104,12 @@ export default function IssuesPage() {
     fetchLookups();
   }, []);
 
-  // ---- Fetch issues whenever filters change ----
+  // Reset page on filter change
+  useEffect(() => {
+    setPage(1);
+  }, [severityFilter, statusFilter, assigneeFilter, componentFilter]);
+
+  // ---- Fetch issues whenever filters or page change ----
   const fetchIssues = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -107,26 +119,33 @@ export default function IssuesPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (assigneeFilter) params.set("assigneeId", assigneeFilter);
     if (componentFilter) params.set("componentId", componentFilter);
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
 
     try {
       const res = await fetch(`/api/issues?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch issues");
-      const data: Issue[] = await res.json();
+      const data = await res.json();
 
-      // Sort by severity (CRITICAL first), then by creation date descending
-      data.sort((a, b) => {
-        const sevDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
-        if (sevDiff !== 0) return sevDiff;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
-
-      setIssues(data);
+      if (data && !Array.isArray(data) && Array.isArray(data.data)) {
+        setIssues(data.data);
+        setTotal(data.total);
+      } else {
+        const arr: Issue[] = Array.isArray(data) ? data : [];
+        arr.sort((a, b) => {
+          const sevDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
+          if (sevDiff !== 0) return sevDiff;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        setIssues(arr);
+        setTotal(arr.length);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, [severityFilter, statusFilter, assigneeFilter, componentFilter]);
+  }, [severityFilter, statusFilter, assigneeFilter, componentFilter, page]);
 
   useEffect(() => {
     fetchIssues();
@@ -231,9 +250,13 @@ export default function IssuesPage() {
               {error}
             </div>
           ) : issues.length === 0 ? (
-            <div className="flex items-center justify-center py-20 text-[#555570]">
-              No issues found.
-            </div>
+            <EmptyState
+              icon={EMPTY_ICONS.issue}
+              title="No issues found"
+              description="No issues match your current filters. Try adjusting them or create a new issue."
+              actionLabel="Create Issue"
+              actionHref="/issues/new"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -282,6 +305,7 @@ export default function IssuesPage() {
               </table>
             </div>
           )}
+          <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
         </div>
       </div>
     </div>

@@ -2,12 +2,12 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15
-    container_name: dronetest-db
+    container_name: testlab-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-dronetest}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-dronetest_local}
-      POSTGRES_DB: dronetest
+      POSTGRES_USER: ${DB_USER:-testlab}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-testlab_local}
+      POSTGRES_DB: testlab
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -15,9 +15,9 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: dronetest-pgadmin
+    container_name: testlab-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@dronetest.internal}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@testlab.internal}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
     ports:
       - "127.0.0.1:5050:80"
