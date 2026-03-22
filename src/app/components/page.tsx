@@ -35,11 +35,8 @@ export default function ComponentsPage() {
   const [componentTypes, setComponentTypes] = useState<string[]>([]);
 
   useEffect(() => {
-    if (authStatus === "unauthenticated") {
-      router.push("/login");
-      return;
-    }
-    if (authStatus === "authenticated") {
+    if (authStatus === "loading") return;
+    {
       // Fetch all to get type list (no pagination)
       fetch("/api/components")
         .then((r) => r.json())

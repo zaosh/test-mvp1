@@ -64,10 +64,6 @@ export default function MyTestsPage() {
 
   useEffect(() => {
     if (sessionStatus === "loading") return;
-    if (!session) {
-      router.push("/login");
-      return;
-    }
 
     async function fetchData() {
       try {

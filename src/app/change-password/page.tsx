@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { signOut } from 'next-auth/react'
 
 export default function ChangePasswordPage() {
   const router = useRouter()
@@ -43,9 +42,8 @@ export default function ChangePasswordPage() {
         return
       }
 
-      // Sign out and redirect to login after password change
-      await signOut({ redirect: false })
-      router.push('/login?message=password-changed')
+      // Redirect to dashboard after password change
+      router.push('/master')
     } catch {
       setError('An unexpected error occurred')
     } finally {

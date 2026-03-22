@@ -96,11 +96,8 @@ export default function TestRunDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (authStatus === "unauthenticated") {
-      router.push("/login");
-      return;
-    }
-    if (authStatus === "authenticated" && id) {
+    if (authStatus === "loading") return;
+    if (id) {
       fetch(`/api/test-runs/${id}`)
         .then((r) => {
           if (!r.ok) throw new Error("Failed to load test run");

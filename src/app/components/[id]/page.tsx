@@ -60,11 +60,8 @@ export default function ComponentDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (authStatus === "unauthenticated") {
-      router.push("/login");
-      return;
-    }
-    if (authStatus === "authenticated" && id) {
+    if (authStatus === "loading") return;
+    if (id) {
       Promise.all([
         fetch(`/api/components/${id}`).then((r) => {
           if (!r.ok) throw new Error("Failed to load component");

@@ -14,6 +14,41 @@ export interface SessionUser {
   sessionVersion: number
 }
 
+// MVP: Auth disabled — use mock session based on x-testlab-mode header or cookie
+// When auth is re-enabled, remove this and the bypass in requireRole()
+const MOCK_USERS: Record<string, SessionUser> = {
+  admin: {
+    id: 'mock-admin',
+    name: 'Admin',
+    email: 'admin@testlab.internal',
+    role: 'ADMIN',
+    mustChangePassword: false,
+    sessionVersion: 1,
+  },
+  testing: {
+    id: 'mock-qa',
+    name: 'QA Engineer',
+    email: 'qa@testlab.internal',
+    role: 'QA',
+    mustChangePassword: false,
+    sessionVersion: 1,
+  },
+  dev: {
+    id: 'mock-dev',
+    name: 'Developer',
+    email: 'dev@testlab.internal',
+    role: 'ENGINEER',
+    mustChangePassword: false,
+    sessionVersion: 1,
+  },
+}
+
+function getMockUser(req: Request): SessionUser {
+  // Check header first, then fall back to admin
+  const mode = req.headers.get('x-testlab-mode') ?? 'admin'
+  return MOCK_USERS[mode] ?? MOCK_USERS.admin
+}
+
 export const PERMISSIONS = {
   DASHBOARD_ACCESS: ['ADMIN', 'QA', 'MANAGER'] as Role[],
   MANAGE_TEST_CASES: ['ADMIN', 'QA'] as Role[],
@@ -35,6 +70,17 @@ export async function requireRole(
   req: Request,
   allowedRoles: Role[]
 ): Promise<{ user: SessionUser } | NextResponse> {
+  // MVP: Auth disabled — use mock user, skip real session check
+  // To re-enable auth: remove this block and uncomment the getServerSession block below
+  const user = getMockUser(req)
+
+  if (!allowedRoles.includes(user.role)) {
+    return NextResponse.json({ error: 'Forbidden', code: 'FORBIDDEN' }, { status: 403 })
+  }
+
+  return { user }
+
+  /* AUTH ENABLED (re-enable when login is restored):
   const session = await getServerSession(authOptions)
 
   if (!session?.user) {
@@ -56,6 +102,7 @@ export async function requireRole(
   }
 
   return { user }
+  */
 }
 
 export function isNextResponse(result: { user: SessionUser } | NextResponse): result is NextResponse {

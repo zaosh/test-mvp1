@@ -80,10 +80,6 @@ export default function MasterDashboard() {
 
   useEffect(() => {
     if (sessionStatus === "loading") return;
-    if (!session) {
-      router.push("/login");
-      return;
-    }
 
     const role = (session?.user as any)?.role;
     if (!["ADMIN", "QA", "MANAGER"].includes(role)) {

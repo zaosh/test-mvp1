@@ -43,9 +43,20 @@ chmod +x scripts/backup.sh
 # Verify backup directory: /var/testlab/backups
 ```
 
-## Login
+## Authentication
 
-All seeded users must change password on first login. Credentials are whatever you set in `SEED_*_PASSWORD` env vars.
+**Login is currently disabled for ease of setup.** The app uses a mode switcher in the sidebar instead — choose between Admin, Testing (QA), and Dev (Engineer) modes to explore different role perspectives without credentials.
+
+When login is re-enabled, the full auth system is already built and includes:
+
+- **Credentials-based login** via NextAuth.js (JWT sessions)
+- **argon2id password hashing** (memoryCost: 65536, timeCost: 3, parallelism: 4)
+- **Account lockout**: 5 failed login attempts triggers a 15-minute lockout
+- **Force password change**: all seeded users must change password on first login
+- **Session revocation**: ADMIN can force-logout any user via API
+- **8-hour sessions**: httpOnly, sameSite strict cookies
+
+### Seeded Users (for when login is enabled)
 
 | Email                        | Role     |
 |------------------------------|----------|
@@ -54,6 +65,8 @@ All seeded users must change password on first login. Credentials are whatever y
 | eng1@testlab.internal      | ENGINEER |
 | eng2@testlab.internal      | ENGINEER |
 | manager@testlab.internal   | MANAGER  |
+
+Credentials are set via `SEED_*_PASSWORD` env vars in `.env.local`.
 
 ## Role Permissions
 

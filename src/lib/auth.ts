@@ -37,9 +37,7 @@ export const authOptions: NextAuthOptions = {
       },
     },
   },
-  pages: {
-    signIn: '/login',
-  },
+  pages: {},
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -149,6 +147,9 @@ export const authOptions: NextAuthOptions = {
         session.user.sessionVersion = token.sessionVersion as number
       }
 
+      // MVP: Auth disabled — skip sessionVersion DB check
+      // To re-enable auth: uncomment the block below
+      /*
       // Verify sessionVersion against DB on every session access
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
@@ -160,6 +161,7 @@ export const authOptions: NextAuthOptions = {
           throw new Error('SESSION_REVOKED')
         }
       }
+      */
 
       return session
     },

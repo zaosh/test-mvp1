@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { StatusPill } from "./StatusPill";
+import { useMode, type AppMode } from "../ModeContext";
 
 interface SidebarProps {
   user: {
@@ -154,6 +155,11 @@ export function Sidebar({ user, openIssueCount = 0 }: SidebarProps) {
         })}
       </nav>
 
+      {/* Mode switcher */}
+      <div className="px-3 py-3 border-t border-[#2a2a38]">
+        <ModeSwitcher />
+      </div>
+
       {/* User section */}
       <div className="px-4 py-4 border-t border-[#2a2a38]">
         <div className="flex items-center gap-3">
@@ -164,5 +170,34 @@ export function Sidebar({ user, openIssueCount = 0 }: SidebarProps) {
         </div>
       </div>
     </aside>
+  );
+}
+
+const MODE_OPTIONS: { value: AppMode; label: string; color: string }[] = [
+  { value: "admin", label: "Admin", color: "#3b82f6" },
+  { value: "testing", label: "Testing", color: "#22c55e" },
+  { value: "dev", label: "Dev", color: "#f59e0b" },
+];
+
+function ModeSwitcher() {
+  const { mode, setMode } = useMode();
+
+  return (
+    <div className="flex gap-1 p-0.5 rounded-md bg-[#0a0a0f]">
+      {MODE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => setMode(opt.value)}
+          className="flex-1 text-xs py-1.5 rounded transition-all font-medium"
+          style={{
+            background: mode === opt.value ? opt.color + "20" : "transparent",
+            color: mode === opt.value ? opt.color : "#555570",
+            borderBottom: mode === opt.value ? `2px solid ${opt.color}` : "2px solid transparent",
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   );
 }

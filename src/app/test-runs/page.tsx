@@ -66,11 +66,8 @@ export default function TestRunsPage() {
 
   // Fetch lookup data
   useEffect(() => {
-    if (authStatus === "unauthenticated") {
-      router.push("/login");
-      return;
-    }
-    if (authStatus === "authenticated") {
+    if (authStatus === "loading") return;
+    {
       Promise.all([
         fetch("/api/test-cases").then((r) => r.json()),
         fetch("/api/components").then((r) => r.json()),
